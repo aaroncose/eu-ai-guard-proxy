@@ -8,9 +8,9 @@ from sqlalchemy import select, update
 from proxy.config import settings
 from proxy.database import async_session_factory
 from proxy.models import AuditLedger, DailyBatchManifest
-from proxy.security.crypto_chain import compute_merkle_root, canonical_json
+from proxy.security.crypto_chain import compute_merkle_root, canonical_json, verify_ledger_integrity
 from proxy.security.eidas_tsp import request_eidas_timestamp
-from proxy.security.asymmetric_signer import sign_manifest_payload
+from proxy.security.asymmetric_signer import sign_manifest_payload, sign_digest_directly
 from proxy.security.rekor_transparency import publish_to_rekor
 
 class S3WormArchiver:
@@ -26,6 +26,10 @@ class S3WormArchiver:
         end_dt = start_dt + timedelta(days=1)
 
         async with async_session_factory() as db_session:
+            # 1. Comprobacion de integridad pre-sellado
+            is_valid, _, broken_id = await verify_ledger_integrity(db_session)
+            integrity_status = "VERIFIED_CLEAN" if is_valid else "TAMPER_DETECTED"
+
             stmt = select(AuditLedger).where(
                 AuditLedger.timestamp_utc >= start_dt,
                 AuditLedger.timestamp_utc < end_dt
@@ -36,7 +40,7 @@ class S3WormArchiver:
             if not records:
                 return None
 
-            # 1. Comprimir JSONL canónico
+            # 2. Generacion del volcado comprimido
             jsonl_buffer = io.BytesIO()
             with gzip.GzipFile(fileobj=jsonl_buffer, mode="wb") as gz:
                 for rec in records:
@@ -60,20 +64,25 @@ class S3WormArchiver:
             jsonl_bytes = jsonl_buffer.getvalue()
             merkle_root = compute_merkle_root([r.record_hash for r in records])
 
-            # 2. Firma ECDSA P-256
-            manifest_bytes = canonical_json({
+            # 3. Firma del Manifiesto Forense
+            manifest_payload = {
                 "batch_date": target_date_str,
                 "records_count": len(records),
-                "merkle_root": merkle_root
-            }).encode("utf-8")
+                "merkle_root": merkle_root,
+                "integrity_status": integrity_status,
+                "first_corrupted_id": broken_id
+            }
+            manifest_bytes = canonical_json(manifest_payload).encode("utf-8")
             signature_bytes = sign_manifest_payload(manifest_bytes)
             signature_hex = signature_bytes.hex()
 
-            # 3. Sello de Tiempo Cualificado eIDAS (RFC 3161)
+            # 4. Sello de Tiempo Cualificado eIDAS (RFC 3161)
             tsa_ok, tsr_bytes, _ = await request_eidas_timestamp(merkle_root)
 
-            # 4. Anclaje en Sigstore Rekor
-            rekor_ok, rekor_data, _ = await publish_to_rekor(merkle_root, signature_bytes)
+            # 5. Anclaje en Sigstore Rekor
+            rekor_sig = sign_digest_directly(bytes.fromhex(merkle_root))
+            rekor_ok, rekor_data, _ = await publish_to_rekor(merkle_root, rekor_sig)
+            
             rekor_uuid = None
             rekor_index = None
             if rekor_ok and rekor_data:
@@ -82,7 +91,7 @@ class S3WormArchiver:
 
             object_key = f"audit_batches/{target_date_str}/ledger_{target_date_str}_{merkle_root[:16]}.jsonl.gz"
 
-            # 5. Volcado WORM a S3 (si está activo)
+            # 6. Almacenamiento WORM S3
             if settings.S3_ENABLED:
                 retain_until = datetime.now(timezone.utc) + timedelta(days=settings.RETENTION_DAYS)
                 async with self.session.client("s3", endpoint_url=settings.S3_ENDPOINT_URL) as s3:
@@ -95,17 +104,20 @@ class S3WormArchiver:
                         ObjectLockRetainUntilDate=retain_until,
                         Metadata={
                             "merkle_root": merkle_root,
+                            "integrity_status": integrity_status,
                             "ecdsa_signature": signature_hex,
                             "rekor_uuid": rekor_uuid or ""
                         }
                     )
 
-            # 6. Registrar Manifiesto en Base de Datos
+            # 7. Persistencia del Lote en Base de Datos
             manifest = DailyBatchManifest(
                 batch_date=target_date_str,
                 records_count=len(records),
                 merkle_root_hash=merkle_root,
                 s3_object_key=object_key,
+                integrity_status=integrity_status,
+                first_corrupted_id=broken_id,
                 has_eidas_tsa=tsa_ok,
                 eidas_tsr_path=f"tsa_{target_date_str}.tsr" if tsa_ok else None,
                 ecdsa_signature_hex=signature_hex,

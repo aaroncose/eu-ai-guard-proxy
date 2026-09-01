@@ -49,7 +49,11 @@ class DailyBatchManifest(Base):
     merkle_root_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     s3_object_key: Mapped[str] = mapped_column(String(255), nullable=False)
     
-    # Capas de Blindaje Criptográfico
+    # Estado de Integridad Forense
+    integrity_status: Mapped[str] = mapped_column(String(32), default="VERIFIED_CLEAN")
+    first_corrupted_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
+    # Capas de Blindaje Criptografico
     has_eidas_tsa: Mapped[bool] = mapped_column(Boolean, default=False)
     eidas_tsr_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     ecdsa_signature_hex: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)

@@ -162,21 +162,22 @@ with tab_batches:
     if manifests:
         manifest_data = []
         for m in manifests:
+            status_label = "VERIFIED_CLEAN" if m.integrity_status == "VERIFIED_CLEAN" else f"TAMPER_DETECTED (ID #{m.first_corrupted_id})"
             manifest_data.append({
                 "Fecha Lote": m.batch_date,
+                "Estado Forense": status_label,
                 "Total Registros": m.records_count,
                 "Merkle Root": m.merkle_root_hash[:16] + "...",
                 "Sello eIDAS": "Token TSR Emitido" if m.has_eidas_tsa else "Pendiente",
                 "Firma ECDSA": "Verificada" if m.ecdsa_signature_hex else "No",
-                "Rekor Log Index": m.rekor_log_index or "No publicado",
-                "Rekor UUID": m.rekor_entry_uuid or "N/A"
+                "Rekor Log Index": m.rekor_log_index or "No publicado"
             })
         st.dataframe(pd.DataFrame(manifest_data), use_container_width=True, hide_index=True)
         
         st.markdown("#### Consulta Publica en Sigstore Rekor")
         for m in manifests:
             if m.rekor_log_index:
-                st.markdown(f"- Lote `{m.batch_date}`: [Verificar en Sigstore Rekor Explorer (Log Index #{m.rekor_log_index})](https://search.sigstore.dev/?logIndex={m.rekor_log_index})")
+                st.markdown(f"- Lote `{m.batch_date}` [{m.integrity_status}]: [Verificar en Sigstore Rekor Explorer (Log Index #{m.rekor_log_index})](https://search.sigstore.dev/?logIndex={m.rekor_log_index})")
     else:
         st.info("No se han consolidado lotes diarios programados todavia. El planificador ejecuta el empaquetado a las 00:05 UTC.")
 
