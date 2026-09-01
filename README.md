@@ -1,26 +1,30 @@
-# EU AI Guard Proxy (EU AI Act Art. 12 & Agent Governance)
+# EU AI Guard Proxy
 
-Reverse proxy determinista de alto rendimiento y sellado criptográfico diseñado para la observabilidad inmutable, la contención de ejecución de agentes y el cumplimiento técnico de los Artículos 12, 19 y 26(6) del Reglamento Europeo de Inteligencia Artificial (EU AI Act).
+Reverse proxy determinista de alto rendimiento y sellado criptográfico multicapa diseñado para la observabilidad inmutable, la contención de ejecución de agentes y el cumplimiento técnico de los Artículos 12, 19 y 26(6) del Reglamento Europeo de Inteligencia Artificial (EU AI Act - Reglamento UE 2024/1689).
 
 ## Descripción Técnica
-
-El sistema se interpone de forma transparente entre las aplicaciones cliente y cualquier proveedor de modelos de lenguaje compatible con la especificación estándar de inferencia (OpenAI, OpenRouter, Azure OpenAI, AWS Bedrock, Anthropic vía gateways, vLLM, Ollama o despliegues locales). Su arquitectura desacopla el ciclo de vida de la petición de red del procesamiento de gobernanza mediante una cola asíncrona de persistencia secuencial.
+El sistema se interpone de forma transparente entre las aplicaciones cliente y cualquier proveedor de modelos de lenguaje compatible con la especificación estándar de inferencia (OpenAI, OpenRouter, Azure OpenAI, AWS Bedrock, Anthropic vía gateways, vLLM, Ollama o despliegues locales on-premise). Su arquitectura desacopla el ciclo de vida de la petición de red del procesamiento de gobernanza mediante una cola asíncrona de persistencia secuencial atómica.
 
 ## Capacidades Principales
 
-- **Compatibilidad Universal Multi-Proveedor**: Agnóstico al proveedor subyacente. Permite operar con servicios comerciales cerrados o modelos de pesos abiertos (Llama, Mistral, Qwen, DeepSeek) sin modificar la capa de integración.
+- **Compatibilidad Universal Multi-Proveedor**: Agnóstico al proveedor subyacente. Permite operar con servicios comerciales cerrados o modelos de pesos abiertos (Llama, Mistral, Qwen, DeepSeek) sin modificar la capa de integración de la aplicación.
 
 - **Registro Inmutable Art. 12 (Tamper-Evident Ledger)**: Encadenamiento criptográfico secuencial basado en SHA-256 sobre payloads JSON serializados de forma canónica. Cualquier alteración de datos históricos invalida la verificación matemática de la cadena.
 
-- **Anonimización Previa a la Persistencia (RGPD)**: Detección y enmascaramiento determinista en memoria de identificadores personales (DNI/NIE, tarjetas de crédito, correos electrónicos y claves API) antes de su persistencia.
+- **Anonimización Previa a la Persistencia (RGPD)**: Detección y enmascaramiento determinista en memoria de identificadores personales (DNI/NIE, tarjetas de crédito, correos electrónicos y claves API) antes de su persistencia en disco o base de datos.
 
-- **Guardarraíl Determinista de Herramientas (Pre-Tool Execution)**: Inspección sintáctica previa de argumentos generados por el modelo (tool_calls) para abortar comandos destructivos de bases de datos (DROP, DELETE, TRUNCATE) e inyecciones a nivel de sistema operativo.
+- **Guardarraíl Determinista de Herramientas (Pre-Tool Execution)**: Inspección sintáctica previa de argumentos generados por el modelo (tool_calls) para abortar comandos destructivos de bases de datos (DROP, DELETE, TRUNCATE) e inyecciones a nivel de sistema operativo antes de su ejecución.
 
-- **Archivado WORM (Write Once, Read Many)**: Rutina programada para la agregación de registros diarios, cómputo de Merkle Root y exportación automatizada a almacenamiento compatible con S3 en modo COMPLIANCE (retención obligatoria de 180 días).
+- **Sello de Tiempo Cualificado eIDAS (RFC 3161 / TSP)**: Integración con Autoridades de Sellado de Tiempo (TSA) cualificadas de la Unión Europea para otorgar presunción jurídica de fecha cierta e integridad de los lotes de auditoría (Reglamento UE 910/2014).
 
-- **Compatibilidad de Streaming**: Soporte nativo para Server-Sent Events (SSE) sin degradación de latencia, reconstruyendo el buffer en segundo plano para su posterior firma.
+- **Firma Asimétrica ECDSA NIST P-256**: Firma digital del manifiesto de auditoría mediante par de claves en curva elíptica secp256r1 (FIPS 186-4) para certificar autoría y no-repudio corporativo.
 
-## Arquitectura del Sistema
+- **Registro de Transparencia Pública Inmutable (Sigstore Rekor)**: Anclaje del Merkle Root diario en el log público de Rekor, generando pruebas de inclusión (Inclusion Proof) y números de secuencia auditables por terceros independientes.
+
+- **Archivado WORM (Write Once, Read Many)**: Rutina programada para agregación de registros diarios y exportación automatizada a almacenamiento compatible con S3 en modo COMPLIANCE (retención obligatoria de 180 días).
+
+- **Compatibilidad Total de Streaming**: Soporte nativo para Server-Sent Events (SSE) sin degradación de latencia para el cliente final, reconstruyendo el buffer completo en segundo plano para su posterior firma.
+## Arquitectura Criptográfica del Sistema
 
 ```
 [Cliente / Agente] 
@@ -37,8 +41,13 @@ El sistema se interpone de forma transparente entre las aplicaciones cliente y c
        │
        ├─► [Ledger Database (PostgreSQL / SQLite)] ──► [SHA-256 Hash Chain]
        │
-       ▼ (Medianoche UTC)
-[WORM Archiver] ──► [S3 / Cloudflare R2 con Object Lock (180 días)]
+       ▼ (Medianoche UTC: Agregación de Merkle Root Diario)
+       ├─► [1. eIDAS TSA (RFC 3161)] ───────► Token .tsr cualificado
+       ├─► [2. Firma ECDSA NIST P-256] ─────► Firma .sig del manifiesto
+       ├─► [3. Sigstore Rekor API] ─────────► Log Index & Inclusion Proof
+       │
+       ▼
+[WORM Archiver] ──► [S3 / Cloudflare R2 con Object Lock en modo COMPLIANCE (180 días)]
 ```
 
 ## Requisitos del Entorno
@@ -48,7 +57,6 @@ El sistema se interpone de forma transparente entre las aplicaciones cliente y c
 - Base de datos: SQLite (desarrollo local) o PostgreSQL 15+ (entornos de producción)
 
 ## Configuración y Variables de Entorno
-
 Copie la plantilla de configuración:
 
 ```bash
@@ -72,7 +80,6 @@ cp .env.example .env
 | `RETENTION_DAYS` | Entero | `180` | Período de bloqueo de borrado en S3 (Art. 12/19 AI Act). |
 
 ## Adaptabilidad de Proveedores Upstream
-
 El proxy reenvía el tráfico hacia cualquier servicio que soporte la especificación `/v1/chat/completions`. Ejemplos de configuración en `.env`:
 
 ### 1. OpenRouter (Acceso a Claude, Gemini, Llama, DeepSeek)
@@ -108,7 +115,6 @@ docker compose up -d --build
 - **Dashboard de Verificación y Control**: http://localhost:8501
 
 ## Integración con Aplicaciones Cliente
-
 La integración no requiere SDKs propietarios. Únicamente se debe redefinir `base_url` en los clientes estándar:
 
 ```python
@@ -143,16 +149,16 @@ print(response.choices[0].message.content)
 ### Auditoría y Cumplimiento Regulatorio
 
 - **GET `/api/v1/audit/verify`**: Ejecuta el algoritmo de verificación matemática sobre toda la secuencia histórica de registros.
-- **GET `/api/v1/audit/export`**: Genera y descarga un archivo ZIP con los registros canónicos en formato JSONL, el manifiesto criptográfico y la firma hash SHA-256.
+- **GET `/api/v1/audit/export`**: Genera y descarga un archivo ZIP con los registros canónicos en formato JSONL, el manifiesto firmado con ECDSA P-256, la clave pública PEM y la firma hash SHA-256.
 
 ### Salud del Servicio
 
-- **GET `/healthz`**: Comprobación del estado del servicio.
+- **GET `/healthz`**: Comprobación del estado operativo del servicio.
 - **GET `/livez`**: Liveness probe para orquestadores de contenedores.
 
-## Ejecución de Pruebas
+## Suite de Pruebas
 
-Suite de pruebas unitarias e integración:
+Ejecución de pruebas unitarias, de integración, firma criptográfica y esquemas ASN.1:
 
 ```bash
 pytest -v
@@ -160,4 +166,4 @@ pytest -v
 
 ## Licencia
 
-Este proyecto está bajo licencia MIT. Consulte el archivo LICENSE para más información.
+Propiedad comercial privada. Todos los derechos reservados. Queda prohibida la copia, distribución, modificación o uso no autorizado de este software sin una licencia comercial expresa y por escrito de su titular.
