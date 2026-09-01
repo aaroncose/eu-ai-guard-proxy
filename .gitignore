@@ -1,0 +1,30 @@
+# Entorno Virtual
+venv/
+.venv/
+.env
+*.env.local
+
+# Bases de datos locales
+data/
+*.db
+*.sqlite
+*.sqlite3
+audit_ledger.db
+
+# Logs y cachés
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Sistema Operativo
+.DS_Store
+.DS_Store?
+._*
+
+# IDEs
+.vscode/
+.idea/
+
+*.egg-info/
+.egg-info/
