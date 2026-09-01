@@ -44,13 +44,20 @@ class DailyBatchManifest(Base):
     __tablename__ = "daily_batch_manifests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    batch_date: Mapped[str] = mapped_column(String(10), unique=True, index=True)  # YYYY-MM-DD
+    batch_date: Mapped[str] = mapped_column(String(10), unique=True, index=True)
     records_count: Mapped[int] = mapped_column(Integer, nullable=False)
     merkle_root_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     s3_object_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Capas de Blindaje Criptográfico
+    has_eidas_tsa: Mapped[bool] = mapped_column(Boolean, default=False)
+    eidas_tsr_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ecdsa_signature_hex: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    rekor_log_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rekor_entry_uuid: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    
     upload_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-# ESTA ES LA CLASE QUE FALTABA:
 class AuditVerificationResponse(BaseModel):
     is_valid: bool
     total_records: int

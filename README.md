@@ -1,4 +1,4 @@
-# EU AI Guard Proxy
+# EU AI Guard Proxy (EU AI Act Art. 12 & Agent Governance)
 
 Reverse proxy determinista de alto rendimiento y sellado criptográfico diseñado para la observabilidad inmutable, la contención de ejecución de agentes y el cumplimiento técnico de los Artículos 12, 19 y 26(6) del Reglamento Europeo de Inteligencia Artificial (EU AI Act).
 

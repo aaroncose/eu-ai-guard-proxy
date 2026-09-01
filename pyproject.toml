@@ -20,6 +20,8 @@ dependencies = [
     "apscheduler>=3.10.4,<4.0.0",
     "cryptography>=43.0.0",
     "streamlit>=1.38.0",
+    "pyasn1>=0.6.0",
+    "pyasn1-modules>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +30,6 @@ dev = [
     "pytest-asyncio>=0.24.0",
 ]
 
-# Paquetes a incluir
 [tool.setuptools.packages.find]
 include = ["proxy*", "dashboard*"]
 exclude = ["data*", "tests*"]

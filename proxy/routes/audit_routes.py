@@ -9,6 +9,7 @@ from sqlalchemy import select
 from proxy.database import get_db_session
 from proxy.models import AuditLedger, AuditVerificationResponse
 from proxy.security.crypto_chain import verify_ledger_integrity, canonical_json
+from proxy.security.asymmetric_signer import sign_manifest_payload, get_public_key_pem
 
 router = APIRouter(tags=["Audit & Compliance"])
 
@@ -34,7 +35,7 @@ async def export_audit_dossier(
     result = await session.execute(stmt)
     records = result.scalars().all()
 
-    # 1. Generar ledger.jsonl
+    # 1. Generar ledger canónico
     jsonl_lines = []
     for r in records:
         line = canonical_json({
@@ -55,24 +56,27 @@ async def export_audit_dossier(
     
     jsonl_content = "\n".join(jsonl_lines).encode("utf-8")
     jsonl_sha256 = hashlib.sha256(jsonl_content).hexdigest()
+    is_valid, _, _ = await verify_ledger_integrity(session)
 
-    is_valid, total, _ = await verify_ledger_integrity(session)
-
-    # 2. Generar manifest.json
+    # 2. Manifiesto oficial y Firma ECDSA P-256
     manifest_data = {
         "export_timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "total_records_exported": len(records),
         "chain_integrity_verified": is_valid,
         "ledger_sha256": jsonl_sha256,
+        "signature_algorithm": "ECDSA_SECP256R1_SHA256",
         "compliance_standard": "EU AI Act - Article 12, 19 & 26(6)"
     }
-    manifest_content = canonical_json(manifest_data).encode("utf-8")
+    manifest_bytes = canonical_json(manifest_data).encode("utf-8")
+    signature_bytes = sign_manifest_payload(manifest_bytes)
 
-    # 3. Empaquetar ZIP en memoria
+    # 3. Generar archivo ZIP blindado
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("audit_ledger.jsonl", jsonl_content)
-        zf.writestr("audit_manifest.json", manifest_content)
+        zf.writestr("audit_manifest.json", manifest_bytes)
+        zf.writestr("manifest_signature.sig", signature_bytes)
+        zf.writestr("public_key.pem", get_public_key_pem().encode("utf-8"))
         zf.writestr("signature.sha256", f"{jsonl_sha256}  audit_ledger.jsonl\n")
 
     zip_bytes = zip_buffer.getvalue()
