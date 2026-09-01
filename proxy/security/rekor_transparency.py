@@ -10,12 +10,12 @@ async def publish_to_rekor(
     signature_bytes: bytes
 ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
     """
-    Publica el Merkle Root firmado en el log de transparencia pública de Sigstore Rekor.
+    Publica el hash en el log de transparencia publica Sigstore Rekor.
     """
-    public_key_b64 = base64.b64encode(get_public_key_pem().encode("utf-8")).decode("utf-8")
+    public_key_pem = get_public_key_pem()
+    public_key_b64 = base64.b64encode(public_key_pem.encode("utf-8")).decode("utf-8")
     signature_b64 = base64.b64encode(signature_bytes).decode("utf-8")
 
-    # Estructura del schema hashedrekord de Rekor v0.0.1
     entry_payload = {
         "apiVersion": "0.0.1",
         "kind": "hashedrekord",
@@ -23,7 +23,7 @@ async def publish_to_rekor(
             "data": {
                 "hash": {
                     "algorithm": "sha256",
-                    "value": merkle_root_hex
+                    "value": merkle_root_hex.lower()
                 }
             },
             "signature": {
@@ -40,8 +40,7 @@ async def publish_to_rekor(
             resp = await client.post(REKOR_PUBLIC_API, json=entry_payload)
             if resp.status_code in (200, 201):
                 data = resp.json()
-                # Retorna el UUID de la entrada y la prueba de inclusión
                 return True, data, None
-            return False, None, f"Rekor rejected with status {resp.status_code}: {resp.text}"
+            return False, None, f"Rekor status {resp.status_code}: {resp.text}"
     except Exception as exc:
-        return False, None, f"Failed to connect to Rekor: {str(exc)}"
+        return False, None, f"Rekor connection error: {str(exc)}"
