@@ -4,7 +4,7 @@
 
 # EU AI Guard Proxy
 
-[![tests](https://github.com/aaroncose/eu-ai-guard-proxy/actions/workflows/tests.yml/badge.svg)](https://github.com/aaroncose/eu-ai-guard-proxy/actions/workflows/tests.yml)
+[![tests](https://github.com/aaroncose/eu-ai-guard-proxy/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/aaroncose/eu-ai-guard-proxy/actions/workflows/tests.yml)
 [![License: Source-Available](https://img.shields.io/badge/License-Source--Available-blue.svg)](LICENSE)
 [![Compliance](https://img.shields.io/badge/EU%20AI%20Act-Art.%2012%20%7C%2019%20%7C%2026(6)-emerald.svg)](#)
 [![eIDAS](https://img.shields.io/badge/eIDAS-RFC%203161%20TSA-informational.svg)](#)
