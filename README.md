@@ -269,5 +269,5 @@ Si su organización o equipo de producto requiere:
 
 **Contacto directo con el autor:**
 - **Autor:** Aarón Cortés Serrano
-- **LinkedIn:** [linkedin.com/in/aaroncortes](https://www.linkedin.com/in/aaroncortes/)
+- **LinkedIn:** [linkedin.com/in/aaroncortes](https://www.linkedin.com/in/aaroncortesseerrano/)
 - **GitHub:** [github.com/aaroncose](https://github.com/aaroncose)
