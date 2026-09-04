@@ -1,0 +1,37 @@
+Source-Available / Proprietary Evaluation License
+
+Copyright (c) 2026 Aarón Cortés Serrano. All Rights Reserved.
+
+This software is published under a Source-Available model for portfolio demonstration,
+technical review, and architectural evaluation purposes.
+
+TERMS AND CONDITIONS:
+
+1. EVALUATION GRANT:
+   You are granted a limited, personal, non-exclusive, non-transferable right to view,
+   inspect, and evaluate this source code solely for assessment, auditing, and review purposes.
+
+2. COMMERCIAL RESTRICTIONS:
+   No right or license is granted to:
+   a) Use, deploy, or run this software, in whole or in part, in any commercial, production,
+      business, or revenue-generating environment.
+   b) Copy, modify, adapt, translate, reverse engineer, or create derivative works.
+   c) Distribute, publish, sublicense, rent, lease, or make available this software or any
+      derived work to third parties.
+   d) Ingest or use this source code for training, fine-tuning, or benchmarking external
+      AI or machine learning models without express written authorization.
+
+3. COMMERCIAL LICENSING & ENTERPRISE INQUIRIES:
+   Commercial usage, custom adaptations, enterprise deployment, and bespoke AI governance
+   integrations require a separate written commercial agreement.
+   
+   To request a commercial license or discuss consulting services, please contact:
+   - Author: Aarón Cortés Serrano
+   - LinkedIn: https://www.linkedin.com/in/aaroncortesserrano/
+   - GitHub: https://github.com/aaroncose
+
+4. NO WARRANTY:
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+   INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+   ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH THE SOFTWARE.

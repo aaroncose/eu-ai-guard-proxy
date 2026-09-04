@@ -1,0 +1,49 @@
+# Secretos y variables de entorno
+.env
+.env.*
+*.env
+
+# Datos locales, claves criptográficas y bases de datos
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.crt
+*.cert
+
+# Git y metadatos
+.git/
+.gitignore
+.github/
+
+# Entornos virtuales y paquetes
+venv/
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Cachés, logs y temporales
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+.DS_Store
+.DS_Store?
+._*
+
+# IDEs
+.vscode/
+.idea/
+
+# Documentación interna y notas de planificación
+docs-plan/
+.docs-plan/
+
+# Assets multimedia no requeridos en runtime
+assets/
