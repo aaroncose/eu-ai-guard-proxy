@@ -1,6 +1,4 @@
-import pytest
 from proxy.security.asymmetric_signer import (
-    ensure_signing_key_pair,
     sign_manifest_payload,
     verify_manifest_signature
 )

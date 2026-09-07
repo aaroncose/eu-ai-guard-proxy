@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, DateTime, Boolean, JSON, Text
+from sqlalchemy import String, Integer, DateTime, Boolean, JSON, Text, UniqueConstraint
 from pydantic import BaseModel
 
 class Base(DeclarativeBase):
@@ -9,6 +9,13 @@ class Base(DeclarativeBase):
 
 class AuditLedger(Base):
     __tablename__ = "audit_ledger"
+
+    # Cada eslabon admite un unico sucesor. Con dos procesos escribiendo a la
+    # vez, el segundo choca contra esta restriccion en lugar de bifurcar la
+    # cadena en silencio.
+    __table_args__ = (
+        UniqueConstraint("previous_hash", name="uq_audit_ledger_previous_hash"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     request_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
@@ -34,6 +41,9 @@ class AuditLedger(Base):
     tools_called: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     block_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Detalle crudo del fallo del proveedor. Se queda aqui en lugar de viajar
+    # al cliente, que recibe un mensaje generico
+    upstream_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Criptografía
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)

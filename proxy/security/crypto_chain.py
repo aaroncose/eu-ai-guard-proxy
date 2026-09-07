@@ -1,9 +1,9 @@
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, List, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from proxy.config import settings
 
 def ensure_dict(val: Any) -> Any:
@@ -49,9 +49,14 @@ def generate_record_hash(
     return hashlib.sha256(canonical_json(canonical_data).encode("utf-8")).hexdigest()
 
 def compute_merkle_root(hashes: List[str]) -> str:
+    """Raiz Merkle del lote, duplicando el ultimo nodo en los niveles impares.
+
+    Trabaja sobre una copia, porque la lista que recibe pertenece a quien
+    llama.
+    """
     if not hashes:
         return settings.GENESIS_HASH
-    current_level = hashes
+    current_level = list(hashes)
     while len(current_level) > 1:
         if len(current_level) % 2 != 0:
             current_level.append(current_level[-1])
@@ -63,30 +68,60 @@ def compute_merkle_root(hashes: List[str]) -> str:
     return current_level[0]
 
 async def verify_ledger_integrity(session: AsyncSession) -> Tuple[bool, int, Optional[int]]:
+    """Recorre la cadena entera y devuelve (integra, total, primer id corrupto).
+
+    El recorrido va por paginas y suelta cada una al terminarla. Cargar el
+    ledger completo en memoria deja de ser viable en cuanto crece.
+    """
     from proxy.models import AuditLedger
-    stmt = select(AuditLedger).order_by(AuditLedger.id.asc())
-    result = await session.execute(stmt)
-    records = result.scalars().all()
-    
-    if not records:
+
+    total = (await session.execute(select(func.count(AuditLedger.id)))).scalar() or 0
+    if total == 0:
         return True, 0, None
-        
+
+    page_size = max(1, settings.AUDIT_PAGE_SIZE)
     expected_prev = settings.GENESIS_HASH
-    for rec in records:
-        if rec.previous_hash != expected_prev:
-            return False, len(records), rec.id
-            
-        calculated = generate_record_hash(
-            previous_hash=rec.previous_hash,
-            request_id=rec.request_id,
-            timestamp_iso=normalize_timestamp(rec.timestamp_utc),
-            model=rec.model_requested,
-            request_payload=rec.request_payload,
-            response_payload=rec.response_payload
+    last_id = 0
+
+    # Se piden columnas sueltas en lugar de entidades. Las filas asi devueltas
+    # se quedan fuera del mapa de identidad de la sesion, de modo que el
+    # recorrido acota su memoria sin alterar los objetos de quien llama
+    columns = (
+        AuditLedger.id,
+        AuditLedger.request_id,
+        AuditLedger.timestamp_utc,
+        AuditLedger.model_requested,
+        AuditLedger.request_payload,
+        AuditLedger.response_payload,
+        AuditLedger.previous_hash,
+        AuditLedger.record_hash,
+    )
+
+    while True:
+        stmt = (
+            select(*columns)
+            .where(AuditLedger.id > last_id)
+            .order_by(AuditLedger.id.asc())
+            .limit(page_size)
         )
-        if calculated != rec.record_hash:
-            return False, len(records), rec.id
-            
-        expected_prev = rec.record_hash
-        
-    return True, len(records), None
+        rows = (await session.execute(stmt)).all()
+        if not rows:
+            return True, total, None
+
+        for row in rows:
+            if row.previous_hash != expected_prev:
+                return False, total, row.id
+
+            calculated = generate_record_hash(
+                previous_hash=row.previous_hash,
+                request_id=row.request_id,
+                timestamp_iso=normalize_timestamp(row.timestamp_utc),
+                model=row.model_requested,
+                request_payload=row.request_payload,
+                response_payload=row.response_payload
+            )
+            if calculated != row.record_hash:
+                return False, total, row.id
+
+            expected_prev = row.record_hash
+            last_id = row.id

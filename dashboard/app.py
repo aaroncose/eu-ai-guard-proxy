@@ -1,8 +1,8 @@
 import streamlit as st
+import httpx
 import asyncio
 import os
 import pandas as pd
-import json
 from datetime import datetime, timezone
 from sqlalchemy import select, func, delete
 from proxy.config import settings
@@ -205,11 +205,33 @@ with tab_export:
     - `signature.sha256`: Hash SHA-256 del archivo de registros.
     """)
     
-    export_url = f"http://localhost:8000/api/v1/audit/export?api_key={settings.PROXY_API_KEY}"
-    st.markdown(
-        f'<a href="{export_url}" target="_blank">'
-        '<button style="background-color:#1f6feb;color:white;padding:8px 16px;border:none;border-radius:4px;font-weight:600;cursor:pointer;">'
-        'Descargar Expediente de Auditoria Art. 12 (.ZIP)'
-        '</button></a>',
-        unsafe_allow_html=True
-    )
+    # La credencial viaja en la cabecera. Un enlace con la clave en la
+    # direccion la deja escrita en el historial y en los logs de acceso
+    if st.button("Generar Expediente de Auditoria Art. 12 (.ZIP)", type="primary"):
+        export_url = f"{settings.PROXY_PUBLIC_URL.rstrip('/')}/api/v1/audit/export"
+        try:
+            with st.spinner("Solicitando el expediente firmado al proxy..."):
+                response = httpx.get(
+                    export_url,
+                    headers={"Authorization": f"Bearer {settings.PROXY_API_KEY}"},
+                    timeout=120.0,
+                )
+        except httpx.HTTPError as exc:
+            st.error(f"No se pudo contactar con el proxy en {export_url}: {exc}")
+        else:
+            if response.status_code == 200:
+                st.session_state["dossier_bytes"] = response.content
+                st.session_state["dossier_name"] = (
+                    f"EU_AI_Act_Audit_Dossier_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+                )
+            else:
+                st.session_state.pop("dossier_bytes", None)
+                st.error(f"El proxy respondio {response.status_code}: {response.text[:300]}")
+
+    if st.session_state.get("dossier_bytes"):
+        st.download_button(
+            "Descargar expediente generado",
+            data=st.session_state["dossier_bytes"],
+            file_name=st.session_state.get("dossier_name", "audit_dossier.zip"),
+            mime="application/zip",
+        )
