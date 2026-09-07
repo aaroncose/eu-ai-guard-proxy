@@ -55,9 +55,13 @@ Encadenamiento criptográfico secuencial basado en SHA-256 sobre payloads JSON s
 
 Detección y enmascaramiento determinista en memoria de identificadores personales (DNI/NIE, tarjetas de crédito, correos electrónicos y claves API) antes de su persistencia en disco o base de datos.
 
+Las tarjetas se validan con el dígito de control de Luhn antes de enmascararlas, así que un importe o un identificador interno de dieciséis cifras se conserva legible en el registro. El enmascaramiento aplica a lo que se persiste; la carga que viaja al proveedor es la que envió el cliente.
+
 ### Guardarraíl Determinista de Herramientas (Pre-Tool Execution)
 
 Inspección sintáctica previa de argumentos generados por el modelo (`tool_calls`) para abortar comandos destructivos de bases de datos (`DROP`, `DELETE`, `TRUNCATE`) e inyecciones a nivel de sistema operativo antes de su ejecución.
+
+Los argumentos se deserializan antes de comparar, los comentarios SQL intercalados se colapsan y los espacios se normalizan, de modo que `DROP/**/TABLE` y las secuencias escapadas caen en el mismo patrón. La inspección es sintáctica y determinista, sin interpretación semántica de la consulta.
 
 ### Protocolo Dual de Notaría Forense (Doble Firma)
 
@@ -66,9 +70,13 @@ En la agregación diaria de medianoche (00:05 UTC), el sistema ejecuta una verif
 - Si la cadena está 100% íntegra, sella el lote bajo el estado `VERIFIED_CLEAN` y emite los certificados oficiales.
 - Si se detecta una alteración histórica, no encubre el fallo ni detiene el sellado; sella de forma inmediata el lote bajo el estado `TAMPER_DETECTED`, registrando el identificador exacto del registro manipulado (`first_corrupted_id`) y anclando el estado de infracción en Sigstore Rekor y la TSA eIDAS. Esto congela la prueba pericial con sello de tiempo oficial para auditorías forenses, impidiendo que un atacante intente reescribir la base de datos.
 
-### Compatibilidad Total de Streaming
+### Streaming Vigilado (SSE)
 
-Soporte nativo para Server-Sent Events (SSE) sin degradación de latencia para el cliente final, reconstruyendo el buffer completo en segundo plano para su posterior firma.
+Soporte nativo para Server-Sent Events. Los bytes del proveedor se reenvían intactos al cliente mientras el proxy reconstruye en paralelo los fragmentos de `tool_calls`, que llegan troceados entre chunks y se concatenan por su campo `index`.
+
+Al detectar una orden destructiva, el proxy corta el flujo, emite un chunk de bloqueo y cierra la conexión con el proveedor antes del `finish_reason: tool_calls` que dispara la ejecución en el cliente. Los fragmentos de texto ya entregados quedan en poder del cliente, que es el límite propio de cualquier respuesta incremental.
+
+El apunte de auditoría se escribe también cuando el cliente corta la conexión o el proveedor falla.
 
 ## Arquitectura Criptográfica del Sistema
 
@@ -123,12 +131,21 @@ cp .env.example .env
 | `UPSTREAM_API_KEY` | String | `""` | Clave de API del proveedor de inferencia configurado. |
 | `DATABASE_URL` | String | `sqlite+aiosqlite:///...` | URI asíncrona de conexión a base de datos. |
 | `PROXY_API_KEY` | String | `sk-guard-local-dev-key` | Clave requerida en cabeceras de autorización del cliente. |
-| `TSA_SERVER_URL` | String | `http://timestamp.digicert.com` | Servidor TSA RFC 3161 para sello de tiempo eIDAS. |
+| `EIDAS_TSA_URL` | String | `https://timestamp.digicert.com` | Servidor TSA RFC 3161. DigiCert queda fuera de la lista de confianza europea, así que un sello cualificado exige apuntar a un QTSP. |
 | `S3_ENABLED` | Booleano | `False` | Habilita el archivado diario a S3/R2 en modo WORM. |
 | `S3_ENDPOINT_URL` | String | `None` | Endpoint S3 personalizado (opcional, para MinIO o Cloudflare R2). |
 | `S3_BUCKET_NAME` | String | `ai-audit-ledger-eu` | Nombre del bucket con Object Lock habilitado. |
 | `S3_REGION` | String | `eu-central-1` | Región del bucket de almacenamiento. |
 | `RETENTION_DAYS` | Entero | `180` | Período de bloqueo de borrado en S3 (Art. 12/19 AI Act). |
+| `ARCHIVE_BACKFILL_DAYS` | Entero | `30` | Días hacia atrás que revisa el arranque en busca de lotes sin sellar. |
+| `CORS_ALLOW_ORIGINS` | String | `""` | Orígenes autorizados separados por comas. Vacío deja CORS apagado. |
+| `PROXY_PUBLIC_URL` | String | `http://localhost:8000` | URL del proxy que usa el dashboard para pedir el expediente. |
+| `UPSTREAM_TIMEOUT` | Decimal | `60.0` | Plazo de espera de las llamadas al proveedor. |
+| `AUDIT_WRITE_MAX_ATTEMPTS` | Entero | `3` | Intentos de escritura de un apunte antes de volcarlo a `data/failed_audit`. |
+| `AUDIT_DRAIN_TIMEOUT` | Decimal | `10.0` | Plazo para vaciar la cola de auditoría al apagar el servicio. |
+| `AUDIT_EXPORT_MAX_RECORDS` | Entero | `50000` | Tope de registros por expediente exportado. |
+| `AUDIT_PAGE_SIZE` | Entero | `1000` | Tamaño de página al recorrer el ledger. |
+| `SIGNING_KEY_PASSPHRASE` | String | `dev-insecure-...` | Frase que cifra la clave privada de firma en disco. |
 
 ## Adaptabilidad de Proveedores Upstream
 
@@ -197,16 +214,18 @@ print(response.choices[0].message.content)
 ### Inferencia y Proxy
 
 - `POST /v1/chat/completions`: Intercepta, aplica filtros DLP, evalúa herramientas y registra la interacción bajo encadenamiento hash.
-- `GET /v1/models`: Consulta de modelos expuestos.
+- `GET /v1/models`: Reenvía la consulta al proveedor configurado y devuelve su catálogo tal cual.
 
 ### Auditoría y Cumplimiento Regulatorio
 
 - `GET /api/v1/audit/verify`: Ejecuta el algoritmo de verificación matemática sobre toda la secuencia histórica de registros.
-- `GET /api/v1/audit/export`: Genera y descarga un archivo ZIP con los registros canónicos en formato JSONL, el manifiesto firmado con ECDSA P-256 (`VERIFIED_CLEAN` o `TAMPER_DETECTED`), la clave pública PEM y la firma hash SHA-256.
+- `GET /api/v1/audit/export`: Genera y descarga un archivo ZIP con los registros canónicos en formato JSONL, el manifiesto firmado con ECDSA P-256 (`VERIFIED_CLEAN` o `TAMPER_DETECTED`), la clave pública PEM y la firma hash SHA-256. Admite los filtros `app_id`, `date_from`, `date_to` y `limit`, y el manifiesto deja constancia de los que se aplicaron.
+
+La credencial viaja en la cabecera `Authorization: Bearer <PROXY_API_KEY>` en todos los endpoints.
 
 ### Salud del Servicio
 
-- `GET /healthz`: Comprobación del estado operativo del servicio.
+- `GET /healthz`: Estado operativo, con el número de apuntes en cola (`audit_pending`) y los que la base rechazó (`audit_failed`, en espera dentro de `data/failed_audit`).
 - `GET /livez`: Liveness probe para orquestadores de contenedores.
 
 ## Verificación de Transparencia Pública
